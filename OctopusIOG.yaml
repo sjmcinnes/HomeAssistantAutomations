@@ -1,146 +1,122 @@
 alias: Octopus IOG off peak tariff use via Ohme charging and set cheap window
 description: >
-  Starts the Wave Spa heater and Immersion heater, and raises Sunsynk battery
-  capacity to 100% (charge) during cheap electricity periods or Ohme extra
-  charging slots. Stops the heaters and returns Sunsynk battery capacity to 10%
-  (discharge) when those periods end.
-
+  Starts the Wave Spa heater and immersion heater, and raises Sunsynk battery
+  capacity to 100% during cheap electricity periods or Ohme extra charging
+  slots. Stops the heaters and returns Sunsynk battery capacity to 10% when
+  those periods end.
 triggers:
   - trigger: numeric_state
     entity_id: sensor.ohme_epod_power
     above: 1
     for: "00:01:00"
     id: ohme_started_outside_cheap_window
-
   - trigger: numeric_state
     entity_id: sensor.ohme_epod_power
     below: 1
     for: "00:01:00"
     id: ohme_stopped_outside_cheap_window
-
   - trigger: time
     at: "23:30:00"
     id: cheap_window_started
-
   - trigger: time
     at: "05:30:00"
     id: cheap_window_stopped
-
 conditions: []
-
 actions:
   - variables:
-      in_cheap_window: >
+      in_cheap_window: |
         {{ now().strftime('%H:%M') >= '23:30'
            or now().strftime('%H:%M') < '05:30' }}
-      outside_cheap_window: >
+      outside_cheap_window: |
         {{ not in_cheap_window }}
-
   - choose:
-      # START CHEAP ELECTRICITY USE
       - conditions:
           - condition: template
-            value_template: >
+            value_template: |
               {{ trigger.id == 'cheap_window_started'
                  or (
                    trigger.id == 'ohme_started_outside_cheap_window'
                    and outside_cheap_window
                  ) }}
         sequence:
-
-          # Set spa temperature
-          - action: climate.set_temperature
-            continue_on_error: true
-            target:
-              entity_id: climate.wave_spa_eu_spa_thermostat
-            data:
-              temperature: 40
-
-          # Start spa filter
-          - action: switch.turn_on
-            continue_on_error: true
-            target:
-              entity_id: switch.wave_spa_eu_filter
-
-          # Start spa heater
-          - action: switch.turn_on
-            continue_on_error: true
-            target:
-              entity_id: switch.wave_spa_eu_heater
-
-          # Start immersion heater
-          - action: switch.turn_on
-            continue_on_error: true
-            target:
-              entity_id: switch.immersion_heater_switch_1
-
-          # Allow Sunsynk battery to charge to 100%
-          - action: number.set_value
-            continue_on_error: true
-            target:
-              entity_id: number.2205186946_time_slot_1_capacity
-            data:
-              value: 100
-
-          # Log result
-          - action: logbook.log
-            continue_on_error: true
-            data:
-              name: Spa, immersion and Sunsynk
-              message: >
-                Wave Spa heater and immersion heater started.
-                Sunsynk battery capacity set to 100%.
-                Trigger: {{ trigger.id }}.
-              entity_id: switch.immersion_heater_switch_1
-              domain: automation
-
-      # STOP CHEAP ELECTRICITY USE
+          - parallel:
+              - action: climate.set_temperature
+                target:
+                  entity_id: climate.wave_spa_eu_spa_thermostat
+                data:
+                  temperature: 40
+              - action: switch.turn_on
+                target:
+                  entity_id: switch.wave_spa_eu_filter
+              - action: switch.turn_on
+                target:
+                  entity_id: switch.wave_spa_eu_heater
+              - action: switch.turn_on
+                target:
+                  entity_id: switch.immersion_heater_switch_1
+              - sequence:
+                  - delay: "00:00:10"
+                  - action: switch.turn_on
+                    target:
+                      entity_id: switch.immersion_heater_switch_1
+              - sequence:
+                  - delay: "00:00:30"
+                  - action: switch.turn_on
+                    target:
+                      entity_id: switch.immersion_heater_switch_1
+              - action: number.set_value
+                target:
+                  entity_id: number.2205186946_time_slot_1_capacity
+                data:
+                  value: 100
+              - action: logbook.log
+                data:
+                  name: Spa, immersion and Sunsynk
+                  message: >
+                    Cheap electricity period started. Spa, immersion and Sunsynk
+                    commands sent. Trigger: {{ trigger.id }}.
+                  entity_id: switch.immersion_heater_switch_1
+                  domain: automation
       - conditions:
           - condition: template
-            value_template: >
+            value_template: |
               {{ trigger.id == 'cheap_window_stopped'
                  or (
                    trigger.id == 'ohme_stopped_outside_cheap_window'
                    and outside_cheap_window
                  ) }}
         sequence:
-
-          # Stop spa heater
-          - action: switch.turn_off
-            continue_on_error: true
-            target:
-              entity_id: switch.wave_spa_eu_heater
-
-          # Stop immersion heater
-          - action: switch.turn_off
-            continue_on_error: true
-            target:
-              entity_id: switch.immersion_heater_switch_1
-
-          # Keep spa filter running
-          - action: switch.turn_on
-            continue_on_error: true
-            target:
-              entity_id: switch.wave_spa_eu_filter
-
-          # Return Sunsynk battery discharge limit to 10%
-          - action: number.set_value
-            continue_on_error: true
-            target:
-              entity_id: number.2205186946_time_slot_1_capacity
-            data:
-              value: 10
-
-          # Log result
-          - action: logbook.log
-            continue_on_error: true
-            data:
-              name: Spa, immersion and Sunsynk
-              message: >
-                Wave Spa heater and immersion heater stopped.
-                Sunsynk battery capacity set to 10%.
-                Trigger: {{ trigger.id }}.
-              entity_id: switch.immersion_heater_switch_1
-              domain: automation
-
-mode: single
+          - parallel:
+              - action: switch.turn_off
+                target:
+                  entity_id: switch.wave_spa_eu_heater
+              - action: switch.turn_on
+                target:
+                  entity_id: switch.wave_spa_eu_filter
+              - action: switch.turn_off
+                target:
+                  entity_id: switch.immersion_heater_switch_1
+              - sequence:
+                  - delay: "00:00:10"
+                  - action: switch.turn_off
+                    target:
+                      entity_id: switch.immersion_heater_switch_1
+              - sequence:
+                  - delay: "00:00:30"
+                  - action: switch.turn_off
+                    target:
+                      entity_id: switch.immersion_heater_switch_1
+              - action: number.set_value
+                target:
+                  entity_id: number.2205186946_time_slot_1_capacity
+                data:
+                  value: 10
+              - action: logbook.log
+                data:
+                  name: Spa, immersion and Sunsynk
+                  message: >
+                    Cheap electricity period ended. Spa, immersion and Sunsynk
+                    commands sent. Trigger: {{ trigger.id }}.
+                  entity_id: switch.immersion_heater_switch_1
+                  domain: automation
+mode: restart
