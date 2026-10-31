@@ -1,43 +1,55 @@
+
 alias: Octopus IOG off peak tariff use via Ohme charging and set cheap window
 description: >
   Starts the Wave Spa heater and immersion heater, and raises Sunsynk battery
   capacity to 100% during cheap electricity periods or Ohme extra charging
   slots. Stops the heaters and returns Sunsynk battery capacity to 10% when
   those periods end.
+
 triggers:
   - trigger: numeric_state
     entity_id: sensor.ohme_epod_power
     above: 1
     for: "00:01:00"
     id: ohme_started_outside_cheap_window
+
   - trigger: numeric_state
     entity_id: sensor.ohme_epod_power
     below: 1
     for: "00:01:00"
     id: ohme_stopped_outside_cheap_window
+
   - trigger: time
     at: "23:30:00"
     id: cheap_window_started
+
   - trigger: time
     at: "05:30:00"
     id: cheap_window_stopped
+
 conditions: []
+
 actions:
   - variables:
-      in_cheap_window: |
+      in_cheap_window: >
         {{ now().strftime('%H:%M') >= '23:30'
            or now().strftime('%H:%M') < '05:30' }}
-      outside_cheap_window: |
+      outside_cheap_window: >
         {{ not in_cheap_window }}
+
   - choose:
+      # Start only during the cheap window,
+      # or when Ohme charges outside that window.
       - conditions:
           - condition: template
-            value_template: |
-              {{ trigger.id == 'cheap_window_started'
-                 or (
-                   trigger.id == 'ohme_started_outside_cheap_window'
-                   and outside_cheap_window
-                 ) }}
+            value_template: >
+              {{
+                (trigger.id == 'cheap_window_started'
+                 and in_cheap_window)
+                or
+                (trigger.id == 'ohme_started_outside_cheap_window'
+                 and outside_cheap_window)
+              }}
         sequence:
           - parallel:
               - action: climate.set_temperature
@@ -45,30 +57,37 @@ actions:
                   entity_id: climate.wave_spa_eu_spa_thermostat
                 data:
                   temperature: 40
+
               - action: switch.turn_on
                 target:
                   entity_id: switch.wave_spa_eu_filter
+
               - action: switch.turn_on
                 target:
                   entity_id: switch.wave_spa_eu_heater
+
               - action: switch.turn_on
                 target:
                   entity_id: switch.immersion_heater_switch_1
+
               - sequence:
                   - delay: "00:00:10"
                   - action: switch.turn_on
                     target:
                       entity_id: switch.immersion_heater_switch_1
+
               - sequence:
                   - delay: "00:00:30"
                   - action: switch.turn_on
                     target:
                       entity_id: switch.immersion_heater_switch_1
+
               - action: number.set_value
                 target:
                   entity_id: number.2205186946_time_slot_1_capacity
                 data:
                   value: 100
+
               - action: logbook.log
                 data:
                   name: Spa, immersion and Sunsynk
@@ -77,40 +96,50 @@ actions:
                     commands sent. Trigger: {{ trigger.id }}.
                   entity_id: switch.immersion_heater_switch_1
                   domain: automation
+
+      # Stop only outside the cheap window.
       - conditions:
           - condition: template
-            value_template: |
-              {{ trigger.id == 'cheap_window_stopped'
-                 or (
-                   trigger.id == 'ohme_stopped_outside_cheap_window'
-                   and outside_cheap_window
-                 ) }}
+            value_template: >
+              {{
+                (trigger.id == 'cheap_window_stopped'
+                 and outside_cheap_window)
+                or
+                (trigger.id == 'ohme_stopped_outside_cheap_window'
+                 and outside_cheap_window)
+              }}
         sequence:
           - parallel:
               - action: switch.turn_off
                 target:
                   entity_id: switch.wave_spa_eu_heater
+
               - action: switch.turn_on
                 target:
                   entity_id: switch.wave_spa_eu_filter
+
               - action: switch.turn_off
                 target:
                   entity_id: switch.immersion_heater_switch_1
+
               - sequence:
                   - delay: "00:00:10"
                   - action: switch.turn_off
                     target:
                       entity_id: switch.immersion_heater_switch_1
+
               - sequence:
                   - delay: "00:00:30"
                   - action: switch.turn_off
                     target:
                       entity_id: switch.immersion_heater_switch_1
+
               - action: number.set_value
                 target:
                   entity_id: number.2205186946_time_slot_1_capacity
                 data:
                   value: 10
+
               - action: logbook.log
                 data:
                   name: Spa, immersion and Sunsynk
@@ -119,4 +148,8 @@ actions:
                     commands sent. Trigger: {{ trigger.id }}.
                   entity_id: switch.immersion_heater_switch_1
                   domain: automation
+
+trace:
+  stored_traces: 100
+
 mode: restart
