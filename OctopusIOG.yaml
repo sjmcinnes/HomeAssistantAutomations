@@ -1,4 +1,3 @@
-
 alias: Octopus IOG off peak tariff use via Ohme charging and set cheap window
 description: >
   Starts the Wave Spa heater and immersion heater, and raises Sunsynk battery
@@ -34,23 +33,28 @@ actions:
       in_cheap_window: >
         {{ now().strftime('%H:%M') >= '23:30'
            or now().strftime('%H:%M') < '05:30' }}
-      outside_cheap_window: >
-        {{ not in_cheap_window }}
+      outside_cheap_window: "{{ not in_cheap_window }}"
 
   - choose:
-      # Start only during the cheap window,
-      # or when Ohme charges outside that window.
       - conditions:
           - condition: template
             value_template: >
               {{
-                (trigger.id == 'cheap_window_started'
-                 and in_cheap_window)
+                (trigger.id == 'cheap_window_started' and in_cheap_window)
                 or
                 (trigger.id == 'ohme_started_outside_cheap_window'
                  and outside_cheap_window)
               }}
         sequence:
+          # Audit entry written before any start commands are sent.
+          - action: logbook.log
+            data:
+              name: Spa, immersion and Sunsynk
+              message: >
+                Start sequence began. Trigger: {{ trigger.id }}.
+              entity_id: switch.immersion_heater_switch_1
+              domain: automation
+
           - parallel:
               - action: climate.set_temperature
                 target:
@@ -88,27 +92,34 @@ actions:
                 data:
                   value: 100
 
-              - action: logbook.log
-                data:
-                  name: Spa, immersion and Sunsynk
-                  message: >
-                    Cheap electricity period started. Spa, immersion and Sunsynk
-                    commands sent. Trigger: {{ trigger.id }}.
-                  entity_id: switch.immersion_heater_switch_1
-                  domain: automation
+          # Written only after all parallel branches finish.
+          - action: logbook.log
+            data:
+              name: Spa, immersion and Sunsynk
+              message: >
+                Start sequence completed. Trigger: {{ trigger.id }}.
+              entity_id: switch.immersion_heater_switch_1
+              domain: automation
 
-      # Stop only outside the cheap window.
       - conditions:
           - condition: template
             value_template: >
               {{
-                (trigger.id == 'cheap_window_stopped'
-                 and outside_cheap_window)
+                (trigger.id == 'cheap_window_stopped' and outside_cheap_window)
                 or
                 (trigger.id == 'ohme_stopped_outside_cheap_window'
                  and outside_cheap_window)
               }}
         sequence:
+          # Audit entry written before any end commands are sent.
+          - action: logbook.log
+            data:
+              name: Spa, immersion and Sunsynk
+              message: >
+                End sequence began. Trigger: {{ trigger.id }}.
+              entity_id: switch.immersion_heater_switch_1
+              domain: automation
+
           - parallel:
               - action: switch.turn_off
                 target:
@@ -140,16 +151,18 @@ actions:
                 data:
                   value: 10
 
-              - action: logbook.log
-                data:
-                  name: Spa, immersion and Sunsynk
-                  message: >
-                    Cheap electricity period ended. Spa, immersion and Sunsynk
-                    commands sent. Trigger: {{ trigger.id }}.
-                  entity_id: switch.immersion_heater_switch_1
-                  domain: automation
+          # Written only after all parallel branches finish.
+          - action: logbook.log
+            data:
+              name: Spa, immersion and Sunsynk
+              message: >
+                End sequence completed. Trigger: {{ trigger.id }}.
+              entity_id: switch.immersion_heater_switch_1
+              domain: automation
 
 trace:
   stored_traces: 100
 
-mode: restart
+mode: queued
+max: 10
+max_exceeded: silent
